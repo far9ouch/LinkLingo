@@ -6,108 +6,80 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./chat.css">
-  <!-- Update to latest Firebase version -->
+  
   <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-    import { getDatabase, ref, push, onValue, set, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+    import UserManager from './user-manager.js';
+    import ChatManager from './chat-manager.js';
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBt8s3bEQYaOJzmgBtUrm0ZkkjVNNo2OIE",
-      authDomain: "linklingo-b9661.firebaseapp.com",
-      databaseURL: "https://linklingo-b9661-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "linklingo-b9661",
-      storageBucket: "linklingo-b9661.appspot.com",
-      messagingSenderId: "21280895713",
-      appId: "1:21280895713:web:138671c7881419bc12fda0"
-    };
+    const userManager = new UserManager();
+    let chatManager;
 
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    async function init() {
+      // Try to connect
+      const connected = await userManager.connect();
+      
+      if (!connected) {
+        document.querySelector('.status').innerHTML = `
+          <span class="status-dot" style="background: red"></span>
+          Connection failed. Please refresh.
+        `;
+        return;
+      }
 
-    // Get or create user ID and name from cookies
-    let currentUserId = getCookie('userId');
-    let username = getCookie('username');
-    if (!currentUserId || !username) {
-      currentUserId = Math.random().toString(36).substring(2);
-      username = 'User_' + Math.random().toString(36).substring(2, 6);
-      setCookie('userId', currentUserId, 365);
-      setCookie('username', username, 365);
-    }
-
-    // Track online users
-    const userStatusRef = ref(db, 'status/' + currentUserId);
-    set(userStatusRef, {
-      online: true,
-      username: username,
-      timestamp: Date.now()
-    });
-
-    // Remove user status on disconnect
-    window.addEventListener('beforeunload', () => {
-      remove(userStatusRef);
-    });
-
-    // Count online users
-    const statusRef = ref(db, 'status');
-    onValue(statusRef, (snapshot) => {
-      const onlineUsers = snapshot.val() || {};
-      const count = Object.keys(onlineUsers).length;
-      document.querySelector('.online-count').textContent = count + ' online';
-    });
-
-    let partnerId = null;
-    let currentChatId = null;
-    let skipCount = 0;
-    const maxSkips = 3;
-    let isConnected = false;
-    let skipClickCount = 0;
-
-    function findNewChat() {
-      const waitingRef = ref(db, 'waiting');
-      remove(ref(db, `waiting/${currentUserId}`));
-
-      onValue(waitingRef, async (snapshot) => {
-        if (isConnected) return;
-        
-        const waitingUsers = snapshot.val() || {};
-        const waitingIds = Object.keys(waitingUsers)
-          .filter(id => id !== currentUserId);
-        
-        if (waitingIds.length > 0) {
-          partnerId = waitingIds[0];
-          currentChatId = Math.random().toString(36).substring(2);
-          
-          await set(ref(db, `chats/${currentChatId}`), {
-            users: {
-              [currentUserId]: username,
-              [partnerId]: waitingUsers[partnerId].username
-            },
-            messages: []
-          });
-          
-          await remove(ref(db, `waiting/${partnerId}`));
-          enableChat();
-          listenToMessages(currentChatId);
-        } else {
-          await set(ref(db, `waiting/${currentUserId}`), {
-            username: username,
-            timestamp: Date.now()
-          });
-        }
-      });
-    }
-
-    function enableChat() {
-      isConnected = true;
+      // Show welcome message
       document.querySelector('.status').innerHTML = `
         <span class="status-dot" style="background: #00ff00"></span>
-        Connected
+        You are now online. Enjoy!
       `;
-      document.querySelector('input').disabled = false;
-      document.querySelector('.send-btn').disabled = false;
-      document.querySelector('.skip-btn').disabled = false;
+
+      // Initialize chat
+      chatManager = new ChatManager(userManager.currentUserId, userManager.username);
+      
+      // Override connect callback
+      chatManager.onConnect = () => {
+        document.querySelector('.status').innerHTML = `
+          <span class="status-dot" style="background: #00ff00"></span>
+          Connected with stranger
+        `;
+        document.querySelector('input').disabled = false;
+        document.querySelector('.send-btn').disabled = false;
+      };
+
+      // Listen for online users
+      userManager.listenToOnlineUsers((count) => {
+        document.querySelector('.online-count').textContent = count + ' online';
+      });
+
+      // Listen for messages
+      chatManager.listenToMessages((messages) => {
+        updateChatMessages(messages);
+      });
+
+      // Start finding chat
+      chatManager.findNewChat();
     }
+
+    // Initialize everything
+    init();
+
+    // UI Event Listeners
+    document.querySelector('.send-btn').addEventListener('click', async () => {
+      const input = document.querySelector('input');
+      const message = input.value.trim();
+      
+      if (!message) {
+        try {
+          await chatManager.skip();
+          resetChatUI();
+        } catch (error) {
+          alert(error.message);
+        }
+        return;
+      }
+
+      await chatManager.sendMessage(message);
+      input.value = '';
+    });
 
     function updateChatMessages(messages) {
       const chatMessages = document.querySelector('.chat-messages');
@@ -115,63 +87,12 @@
       
       Object.values(messages).forEach(msg => {
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${msg.sender === currentUserId ? 'sent' : 'received'}`;
+        messageDiv.className = `message ${msg.sender === userManager.currentUserId ? 'sent' : 'received'}`;
         messageDiv.textContent = msg.text;
         chatMessages.appendChild(messageDiv);
       });
       
       chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    // Handle send/skip button
-    document.querySelector('.send-btn').addEventListener('click', () => {
-      if (!isConnected) return;
-
-      const input = document.querySelector('input');
-      const message = input.value.trim();
-      
-      if (message && currentChatId) {
-        skipClickCount = 0; // Reset skip count when sending message
-        const messagesRef = ref(db, `chats/${currentChatId}/messages`);
-        push(messagesRef, {
-          text: message,
-          sender: currentUserId,
-          username: username,
-          timestamp: Date.now()
-        });
-        input.value = '';
-      } else {
-        skipClickCount++;
-        if (skipClickCount >= 3) {
-          skipChat();
-          skipClickCount = 0;
-        }
-      }
-    });
-
-    // Enter key to send
-    document.querySelector('input').addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        document.querySelector('.send-btn').click();
-      }
-    });
-
-    function skipChat() {
-      if (skipCount >= maxSkips) {
-        alert('You have reached the maximum number of skips. Please wait a moment.');
-        return;
-      }
-      
-      skipCount++;
-      isConnected = false;
-      if (currentChatId) {
-        remove(ref(db, `chats/${currentChatId}`));
-      }
-      currentChatId = null;
-      partnerId = null;
-      
-      resetChatUI();
-      findNewChat();
     }
 
     function resetChatUI() {
@@ -187,25 +108,6 @@
         </div>
       `;
     }
-
-    // Cookie functions
-    function setCookie(name, value, days) {
-      const expires = new Date(Date.now() + days * 864e5).toUTCString();
-      document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/';
-    }
-
-    function getCookie(name) {
-      return document.cookie.split('; ').reduce((r, v) => {
-        const parts = v.split('=');
-        return parts[0] === name ? decodeURIComponent(parts[1]) : r;
-      }, '');
-    }
-
-    // Start chat
-    findNewChat();
-
-    // Add user info to footer
-    document.querySelector('.user-info').textContent = `ID: ${currentUserId} | Name: ${username}`;
   </script>
 </head>
 <body class="chat-page">
