@@ -164,4 +164,36 @@
 .message.received {
   background: rgba(255, 255, 255, 0.1);
   margin-right: auto;
+}
+
+.typing-indicator {
+  padding: 0.5rem 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  text-align: center;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+}
+
+.end-btn {
+  background: rgba(255, 0, 0, 0.3);
+  border: 1px solid rgba(255, 0, 0, 0.4);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.end-btn:hover {
+  background: rgba(255, 0, 0, 0.4);
+}
+
+.message-time {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 0.2rem;
 } 

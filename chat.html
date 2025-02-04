@@ -6,6 +6,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./chat.css">
+  <!-- Add Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-database.js"></script>
 </head>
 <body class="chat-page">
   <div class="chat-container">
@@ -15,12 +18,20 @@
         <span class="status-dot"></span>
         Looking for stranger...
       </div>
+      <div class="controls">
+        <button class="skip-btn" disabled>Skip</button>
+        <button class="end-btn">End Chat</button>
+      </div>
     </div>
     
     <div class="chat-messages">
       <div class="system-message">
         Waiting to connect you with someone...
       </div>
+    </div>
+
+    <div class="typing-indicator" style="display: none;">
+      Stranger is typing...
     </div>
 
     <div class="chat-input">
@@ -35,12 +46,53 @@
   </div>
 
   <script type="module">
-  import { db, ref, push, onValue, set } from './firebase.js';
+  import { db, ref, push, onValue, set, remove } from './firebase.js';
 
   let currentChatId = null;
   let skipCount = 0;
   const maxSkips = 3;
   let isConnected = false;
+  let typingTimeout = null;
+
+  // Handle user disconnection
+  window.addEventListener('beforeunload', () => {
+    if (currentChatId) {
+      remove(ref(db, `chats/${currentChatId}`));
+    }
+    remove(ref(db, `waiting/${currentUserId}`));
+  });
+
+  // Handle typing indicator
+  document.querySelector('input').addEventListener('input', (e) => {
+    if (!currentChatId) return;
+    
+    clearTimeout(typingTimeout);
+    set(ref(db, `chats/${currentChatId}/typing/currentUserId`), true);
+    
+    typingTimeout = setTimeout(() => {
+      set(ref(db, `chats/${currentChatId}/typing/currentUserId`), false);
+    }, 1000);
+  });
+
+  // Listen for messages
+  function listenToMessages(chatId) {
+    const messagesRef = ref(db, `chats/${chatId}/messages`);
+    onValue(messagesRef, (snapshot) => {
+      const messages = snapshot.val() || {};
+      updateChatMessages(messages);
+    });
+  }
+
+  // Listen for typing indicators
+  function listenToTyping(chatId) {
+    const typingRef = ref(db, `chats/${chatId}/typing`);
+    onValue(typingRef, (snapshot) => {
+      const typing = snapshot.val() || {};
+      const isStrangerTyping = typing[partnerId];
+      document.querySelector('.typing-indicator').style.display = 
+        isStrangerTyping ? 'block' : 'none';
+    });
+  }
 
   function findNewChat() {
     const waitingRef = ref(db, 'waiting');

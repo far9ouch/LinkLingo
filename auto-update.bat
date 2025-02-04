@@ -19,12 +19,19 @@ git pull origin main
 :: Add all changes
 git add .
 
-:: Get current date and time for commit message
+:: Get current date and time for default commit message
 for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
 set datetime=%datetime:~0,8%-%datetime:~8,6%
 
-:: Commit with timestamp
-git commit -m "Auto update %datetime%"
+:: Ask for commit message
+set /p commit_msg="Enter commit message (or press Enter for default): "
+
+:: Use custom message or default timestamp
+if "%commit_msg%"=="" (
+    git commit -m "Auto update %datetime%"
+) else (
+    git commit -m "%commit_msg%"
+)
 
 :: Push to GitHub
 git push origin main
