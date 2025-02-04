@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LinkLingo - Chat</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./chat.css">
+</head>
+<body class="chat-page">
+  <div class="chat-container">
+    <div class="chat-header">
+      <div class="logo">LinkLingo</div>
+      <div class="status">
+        <span class="status-dot"></span>
+        Looking for stranger...
+      </div>
+    </div>
+    
+    <div class="chat-messages">
+      <div class="system-message">
+        Waiting to connect you with someone...
+      </div>
+    </div>
+
+    <div class="chat-input">
+      <input type="text" placeholder="Type a message..." disabled>
+      <button class="send-btn" disabled>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script type="module">
+  import { db, ref, push, onValue, set } from './firebase.js';
+
+  let currentChatId = null;
+  let skipCount = 0;
+  const maxSkips = 3;
+  let isConnected = false;
+
+  function findNewChat() {
+    const waitingRef = ref(db, 'waiting');
+    
+    onValue(waitingRef, async (snapshot) => {
+      if (isConnected) return;
+      
+      const waitingUsers = snapshot.val() || {};
+      const waitingIds = Object.keys(waitingUsers);
+      
+      if (waitingIds.length > 0) {
+        // Connect with waiting user
+        const partnerId = waitingIds[0];
+        const chatId = Math.random().toString(36).substring(2);
+        
+        await set(ref(db, `chats/${chatId}`), {
+          users: [partnerId, 'currentUserId'],
+          messages: []
+        });
+        
+        await set(ref(db, `waiting/${partnerId}`), null);
+        currentChatId = chatId;
+        enableChat();
+      } else {
+        // Add self to waiting list
+        const newWaitingRef = push(waitingRef);
+        await set(newWaitingRef, {
+          userId: 'currentUserId',
+          timestamp: Date.now()
+        });
+      }
+    });
+  }
+
+  function enableChat() {
+    isConnected = true;
+    document.querySelector('.status').innerHTML = `
+      <span class="status-dot" style="background: #00ff00"></span>
+      Connected
+    `;
+    document.querySelector('input').disabled = false;
+    document.querySelector('.send-btn').disabled = false;
+  }
+
+  function skipChat() {
+    if (skipCount >= maxSkips) {
+      alert('You have reached the maximum number of skips. Please wait a moment.');
+      return;
+    }
+    
+    skipCount++;
+    isConnected = false;
+    currentChatId = null;
+    
+    document.querySelector('.status').innerHTML = `
+      <span class="status-dot"></span>
+      Looking for stranger...
+    `;
+    document.querySelector('input').disabled = true;
+    document.querySelector('.send-btn').disabled = true;
+    document.querySelector('.chat-messages').innerHTML = `
+      <div class="system-message">
+        Waiting to connect you with someone...
+      </div>
+    `;
+    
+    findNewChat();
+  }
+
+  // Send message
+  document.querySelector('.send-btn').addEventListener('click', () => {
+    const input = document.querySelector('input');
+    const message = input.value.trim();
+    
+    if (message && currentChatId) {
+      const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+      push(messagesRef, {
+        text: message,
+        sender: 'currentUserId',
+        timestamp: Date.now()
+      });
+      input.value = '';
+    }
+  });
+
+  // Skip button
+  const skipBtn = document.createElement('button');
+  skipBtn.className = 'skip-btn';
+  skipBtn.innerHTML = 'Skip';
+  skipBtn.onclick = skipChat;
+  document.querySelector('.chat-header').appendChild(skipBtn);
+
+  // Start finding chat
+  findNewChat();
+  </script>
+</body>
+</html> 

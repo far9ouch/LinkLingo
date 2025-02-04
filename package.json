@@ -1,0 +1,23 @@
+{
+  "name": "linklingo",
+  "version": "1.0.0",
+  "description": "Real-time chat application for language learning",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve",
+    "build": "echo 'No build required'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/far9ouch/LinkLingo.git"
+  },
+  "author": "far9ouch",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/far9ouch/LinkLingo/issues"
+  },
+  "homepage": "https://github.com/far9ouch/LinkLingo#readme",
+  "devDependencies": {
+    "serve": "^14.0.0"
+  }
+}
