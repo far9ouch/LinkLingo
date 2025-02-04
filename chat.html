@@ -25,18 +25,46 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Generate random user ID
-    const currentUserId = Math.random().toString(36).substring(2);
+    // Get or create user ID and name from cookies
+    let currentUserId = getCookie('userId');
+    let username = getCookie('username');
+    if (!currentUserId || !username) {
+      currentUserId = Math.random().toString(36).substring(2);
+      username = 'User_' + Math.random().toString(36).substring(2, 6);
+      setCookie('userId', currentUserId, 365);
+      setCookie('username', username, 365);
+    }
+
+    // Track online users
+    const userStatusRef = ref(db, 'status/' + currentUserId);
+    set(userStatusRef, {
+      online: true,
+      username: username,
+      timestamp: Date.now()
+    });
+
+    // Remove user status on disconnect
+    window.addEventListener('beforeunload', () => {
+      remove(userStatusRef);
+    });
+
+    // Count online users
+    const statusRef = ref(db, 'status');
+    onValue(statusRef, (snapshot) => {
+      const onlineUsers = snapshot.val() || {};
+      const count = Object.keys(onlineUsers).length;
+      document.querySelector('.online-count').textContent = count + ' online';
+    });
+
     let partnerId = null;
     let currentChatId = null;
     let skipCount = 0;
     const maxSkips = 3;
     let isConnected = false;
+    let skipClickCount = 0;
 
     function findNewChat() {
       const waitingRef = ref(db, 'waiting');
-      
-      // First, remove self from waiting list if exists
       remove(ref(db, `waiting/${currentUserId}`));
 
       onValue(waitingRef, async (snapshot) => {
@@ -44,15 +72,17 @@
         
         const waitingUsers = snapshot.val() || {};
         const waitingIds = Object.keys(waitingUsers)
-          .filter(id => id !== currentUserId); // Don't match with self
+          .filter(id => id !== currentUserId);
         
         if (waitingIds.length > 0) {
-          // Connect with first waiting user
           partnerId = waitingIds[0];
           currentChatId = Math.random().toString(36).substring(2);
           
           await set(ref(db, `chats/${currentChatId}`), {
-            users: [partnerId, currentUserId],
+            users: {
+              [currentUserId]: username,
+              [partnerId]: waitingUsers[partnerId].username
+            },
             messages: []
           });
           
@@ -60,8 +90,8 @@
           enableChat();
           listenToMessages(currentChatId);
         } else {
-          // Add self to waiting list
           await set(ref(db, `waiting/${currentUserId}`), {
+            username: username,
             timestamp: Date.now()
           });
         }
@@ -93,19 +123,29 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // Send message
+    // Handle send/skip button
     document.querySelector('.send-btn').addEventListener('click', () => {
+      if (!isConnected) return;
+
       const input = document.querySelector('input');
       const message = input.value.trim();
       
       if (message && currentChatId) {
+        skipClickCount = 0; // Reset skip count when sending message
         const messagesRef = ref(db, `chats/${currentChatId}/messages`);
         push(messagesRef, {
           text: message,
           sender: currentUserId,
+          username: username,
           timestamp: Date.now()
         });
         input.value = '';
+      } else {
+        skipClickCount++;
+        if (skipClickCount >= 3) {
+          skipChat();
+          skipClickCount = 0;
+        }
       }
     });
 
@@ -116,8 +156,7 @@
       }
     });
 
-    // Skip chat
-    document.querySelector('.skip-btn').addEventListener('click', () => {
+    function skipChat() {
       if (skipCount >= maxSkips) {
         alert('You have reached the maximum number of skips. Please wait a moment.');
         return;
@@ -131,45 +170,52 @@
       currentChatId = null;
       partnerId = null;
       
+      resetChatUI();
+      findNewChat();
+    }
+
+    function resetChatUI() {
       document.querySelector('.status').innerHTML = `
         <span class="status-dot"></span>
         Looking for stranger...
       `;
       document.querySelector('input').disabled = true;
       document.querySelector('.send-btn').disabled = true;
-      document.querySelector('.skip-btn').disabled = true;
       document.querySelector('.chat-messages').innerHTML = `
         <div class="system-message">
           Waiting to connect you with someone...
         </div>
       `;
-      
-      findNewChat();
-    });
+    }
 
-    // End chat
-    document.querySelector('.end-btn').addEventListener('click', () => {
-      if (currentChatId) {
-        remove(ref(db, `chats/${currentChatId}`));
-      }
-      window.location.href = 'index.html';
-    });
+    // Cookie functions
+    function setCookie(name, value, days) {
+      const expires = new Date(Date.now() + days * 864e5).toUTCString();
+      document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/';
+    }
 
-    // Start finding chat
+    function getCookie(name) {
+      return document.cookie.split('; ').reduce((r, v) => {
+        const parts = v.split('=');
+        return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+      }, '');
+    }
+
+    // Start chat
     findNewChat();
+
+    // Add user info to footer
+    document.querySelector('.user-info').textContent = `ID: ${currentUserId} | Name: ${username}`;
   </script>
 </head>
 <body class="chat-page">
   <div class="chat-container">
     <div class="chat-header">
       <div class="logo">LinkLingo</div>
+      <div class="online-count">0 online</div>
       <div class="status">
         <span class="status-dot"></span>
         Looking for stranger...
-      </div>
-      <div class="controls">
-        <button class="skip-btn" disabled>Skip</button>
-        <button class="end-btn">End Chat</button>
       </div>
     </div>
     
@@ -179,18 +225,13 @@
       </div>
     </div>
 
-    <div class="typing-indicator" style="display: none;">
-      Stranger is typing...
-    </div>
-
     <div class="chat-input">
       <input type="text" placeholder="Type a message..." disabled>
-      <button class="send-btn" disabled>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
+      <button class="send-btn" disabled>Send/Skip</button>
+    </div>
+
+    <div class="chat-footer">
+      <div class="user-info"></div>
     </div>
   </div>
 </body>

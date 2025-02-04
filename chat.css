@@ -98,6 +98,7 @@
   display: grid;
   place-items: center;
   transition: color 0.3s;
+  min-width: 100px;
 }
 
 .send-btn:hover:not(:disabled) {
@@ -196,4 +197,20 @@
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.4);
   margin-top: 0.2rem;
+}
+
+.chat-footer {
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9rem;
+}
+
+.online-count {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
 } 
