@@ -6,9 +6,158 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./chat.css">
-  <!-- Add Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.x.x/firebase-database.js"></script>
+  <!-- Update to latest Firebase version -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+    import { getDatabase, ref, push, onValue, set, remove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBt8s3bEQYaOJzmgBtUrm0ZkkjVNNo2OIE",
+      authDomain: "linklingo-b9661.firebaseapp.com",
+      projectId: "linklingo-b9661",
+      storageBucket: "linklingo-b9661.firebasestorage.app",
+      messagingSenderId: "21280895713",
+      appId: "1:21280895713:web:138671c7881419bc12fda0",
+      databaseURL: "https://linklingo-b9661-default-rtdb.firebaseio.com"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // Generate random user ID
+    const currentUserId = Math.random().toString(36).substring(2);
+    let partnerId = null;
+    let currentChatId = null;
+    let skipCount = 0;
+    const maxSkips = 3;
+    let isConnected = false;
+
+    function findNewChat() {
+      const waitingRef = ref(db, 'waiting');
+      
+      // First, remove self from waiting list if exists
+      remove(ref(db, `waiting/${currentUserId}`));
+
+      onValue(waitingRef, async (snapshot) => {
+        if (isConnected) return;
+        
+        const waitingUsers = snapshot.val() || {};
+        const waitingIds = Object.keys(waitingUsers)
+          .filter(id => id !== currentUserId); // Don't match with self
+        
+        if (waitingIds.length > 0) {
+          // Connect with first waiting user
+          partnerId = waitingIds[0];
+          currentChatId = Math.random().toString(36).substring(2);
+          
+          await set(ref(db, `chats/${currentChatId}`), {
+            users: [partnerId, currentUserId],
+            messages: []
+          });
+          
+          await remove(ref(db, `waiting/${partnerId}`));
+          enableChat();
+          listenToMessages(currentChatId);
+        } else {
+          // Add self to waiting list
+          await set(ref(db, `waiting/${currentUserId}`), {
+            timestamp: Date.now()
+          });
+        }
+      });
+    }
+
+    function enableChat() {
+      isConnected = true;
+      document.querySelector('.status').innerHTML = `
+        <span class="status-dot" style="background: #00ff00"></span>
+        Connected
+      `;
+      document.querySelector('input').disabled = false;
+      document.querySelector('.send-btn').disabled = false;
+      document.querySelector('.skip-btn').disabled = false;
+    }
+
+    function updateChatMessages(messages) {
+      const chatMessages = document.querySelector('.chat-messages');
+      chatMessages.innerHTML = '';
+      
+      Object.values(messages).forEach(msg => {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${msg.sender === currentUserId ? 'sent' : 'received'}`;
+        messageDiv.textContent = msg.text;
+        chatMessages.appendChild(messageDiv);
+      });
+      
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Send message
+    document.querySelector('.send-btn').addEventListener('click', () => {
+      const input = document.querySelector('input');
+      const message = input.value.trim();
+      
+      if (message && currentChatId) {
+        const messagesRef = ref(db, `chats/${currentChatId}/messages`);
+        push(messagesRef, {
+          text: message,
+          sender: currentUserId,
+          timestamp: Date.now()
+        });
+        input.value = '';
+      }
+    });
+
+    // Enter key to send
+    document.querySelector('input').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.querySelector('.send-btn').click();
+      }
+    });
+
+    // Skip chat
+    document.querySelector('.skip-btn').addEventListener('click', () => {
+      if (skipCount >= maxSkips) {
+        alert('You have reached the maximum number of skips. Please wait a moment.');
+        return;
+      }
+      
+      skipCount++;
+      isConnected = false;
+      if (currentChatId) {
+        remove(ref(db, `chats/${currentChatId}`));
+      }
+      currentChatId = null;
+      partnerId = null;
+      
+      document.querySelector('.status').innerHTML = `
+        <span class="status-dot"></span>
+        Looking for stranger...
+      `;
+      document.querySelector('input').disabled = true;
+      document.querySelector('.send-btn').disabled = true;
+      document.querySelector('.skip-btn').disabled = true;
+      document.querySelector('.chat-messages').innerHTML = `
+        <div class="system-message">
+          Waiting to connect you with someone...
+        </div>
+      `;
+      
+      findNewChat();
+    });
+
+    // End chat
+    document.querySelector('.end-btn').addEventListener('click', () => {
+      if (currentChatId) {
+        remove(ref(db, `chats/${currentChatId}`));
+      }
+      window.location.href = 'index.html';
+    });
+
+    // Start finding chat
+    findNewChat();
+  </script>
 </head>
 <body class="chat-page">
   <div class="chat-container">
@@ -44,149 +193,5 @@
       </button>
     </div>
   </div>
-
-  <script type="module">
-  import { db, ref, push, onValue, set, remove } from './firebase.js';
-
-  let currentChatId = null;
-  let skipCount = 0;
-  const maxSkips = 3;
-  let isConnected = false;
-  let typingTimeout = null;
-
-  // Handle user disconnection
-  window.addEventListener('beforeunload', () => {
-    if (currentChatId) {
-      remove(ref(db, `chats/${currentChatId}`));
-    }
-    remove(ref(db, `waiting/${currentUserId}`));
-  });
-
-  // Handle typing indicator
-  document.querySelector('input').addEventListener('input', (e) => {
-    if (!currentChatId) return;
-    
-    clearTimeout(typingTimeout);
-    set(ref(db, `chats/${currentChatId}/typing/currentUserId`), true);
-    
-    typingTimeout = setTimeout(() => {
-      set(ref(db, `chats/${currentChatId}/typing/currentUserId`), false);
-    }, 1000);
-  });
-
-  // Listen for messages
-  function listenToMessages(chatId) {
-    const messagesRef = ref(db, `chats/${chatId}/messages`);
-    onValue(messagesRef, (snapshot) => {
-      const messages = snapshot.val() || {};
-      updateChatMessages(messages);
-    });
-  }
-
-  // Listen for typing indicators
-  function listenToTyping(chatId) {
-    const typingRef = ref(db, `chats/${chatId}/typing`);
-    onValue(typingRef, (snapshot) => {
-      const typing = snapshot.val() || {};
-      const isStrangerTyping = typing[partnerId];
-      document.querySelector('.typing-indicator').style.display = 
-        isStrangerTyping ? 'block' : 'none';
-    });
-  }
-
-  function findNewChat() {
-    const waitingRef = ref(db, 'waiting');
-    
-    onValue(waitingRef, async (snapshot) => {
-      if (isConnected) return;
-      
-      const waitingUsers = snapshot.val() || {};
-      const waitingIds = Object.keys(waitingUsers);
-      
-      if (waitingIds.length > 0) {
-        // Connect with waiting user
-        const partnerId = waitingIds[0];
-        const chatId = Math.random().toString(36).substring(2);
-        
-        await set(ref(db, `chats/${chatId}`), {
-          users: [partnerId, 'currentUserId'],
-          messages: []
-        });
-        
-        await set(ref(db, `waiting/${partnerId}`), null);
-        currentChatId = chatId;
-        enableChat();
-      } else {
-        // Add self to waiting list
-        const newWaitingRef = push(waitingRef);
-        await set(newWaitingRef, {
-          userId: 'currentUserId',
-          timestamp: Date.now()
-        });
-      }
-    });
-  }
-
-  function enableChat() {
-    isConnected = true;
-    document.querySelector('.status').innerHTML = `
-      <span class="status-dot" style="background: #00ff00"></span>
-      Connected
-    `;
-    document.querySelector('input').disabled = false;
-    document.querySelector('.send-btn').disabled = false;
-  }
-
-  function skipChat() {
-    if (skipCount >= maxSkips) {
-      alert('You have reached the maximum number of skips. Please wait a moment.');
-      return;
-    }
-    
-    skipCount++;
-    isConnected = false;
-    currentChatId = null;
-    
-    document.querySelector('.status').innerHTML = `
-      <span class="status-dot"></span>
-      Looking for stranger...
-    `;
-    document.querySelector('input').disabled = true;
-    document.querySelector('.send-btn').disabled = true;
-    document.querySelector('.chat-messages').innerHTML = `
-      <div class="system-message">
-        Waiting to connect you with someone...
-      </div>
-    `;
-    
-    findNewChat();
-  }
-
-  // Send message
-  document.querySelector('.send-btn').addEventListener('click', () => {
-    const input = document.querySelector('input');
-    const message = input.value.trim();
-    
-    if (message && currentChatId) {
-      const messagesRef = ref(db, `chats/${currentChatId}/messages`);
-      push(messagesRef, {
-        text: message,
-        sender: 'currentUserId',
-        timestamp: Date.now()
-      });
-      input.value = '';
-    }
-  });
-
-  // Skip button
-  const skipBtn = document.createElement('button');
-  skipBtn.className = 'skip-btn';
-  skipBtn.innerHTML = 'Skip';
-  skipBtn.onclick = skipChat;
-  document.querySelector('.chat-header').appendChild(skipBtn);
-
-  // Start finding chat
-  findNewChat();
-  </script>
 </body>
 </html> 
