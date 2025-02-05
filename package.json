@@ -1,14 +1,17 @@
 {
   "name": "linklingo",
   "version": "1.0.0",
-  "description": "Real-time chat application for language learning",
-  "main": "server.js",
+  "description": "Real-time chat application",
+  "main": "netlify/functions/server.js",
   "scripts": {
     "dev": "netlify dev",
     "build": "netlify build"
   },
   "dependencies": {
-    "socket.io": "^4.8.1"
+    "@netlify/functions": "^2.0.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "serverless-http": "^3.2.0"
   },
   "devDependencies": {
     "netlify-cli": "^17.0.0"

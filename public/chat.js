@@ -3,6 +3,7 @@ let escPressCount = 0;
 let skipTimer = null;
 
 const socket = io('/.netlify/functions/server', {
+  path: '/socket.io',
   transports: ['websocket'],
   autoConnect: true,
   reconnection: true

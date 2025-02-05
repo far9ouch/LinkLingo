@@ -1,16 +1,22 @@
 [build]
-  publish = "public"
+  command = "npm install"
   functions = "netlify/functions"
+  publish = "public"
 
 [[redirects]]
   from = "/socket.io/*"
   to = "/.netlify/functions/server"
   status = 200
+  force = true
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[functions]
+  external_node_modules = ["express", "socket.io"]
+  node_bundler = "esbuild"
 
 [dev]
   framework = "#custom"

@@ -1,7 +1,24 @@
 const express = require('express');
+const serverless = require('serverless-http');
+const { Server } = require('socket.io');
+
 const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
+const server = express.Router();
+
+// CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
+
+// Store active users and rooms
+const users = new Map();
+const rooms = new Map();
+
+// Socket.IO setup
+const io = new Server({
   cors: {
     origin: [
       "https://linklingo.netlify.app",
@@ -13,12 +30,7 @@ const io = require('socket.io')(http, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
-// Store active users and rooms
-const users = new Map();
-const rooms = new Map();
-
+// Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
@@ -142,20 +154,15 @@ io.on('connection', (socket) => {
 // Add static file serving
 app.use(express.static('public'));
 
-// Add CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
+// Test route
+server.get('/test', (req, res) => {
+  res.json({ message: 'Server is running' });
 });
 
-// Add a test route
-app.get('/test', (req, res) => {
-  res.send('Server is running');
-});
+app.use('/.netlify/functions/server', server);
 
-http.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Test URL: http://localhost:${PORT}/test`);
-}); 
+// Export the serverless function
+exports.handler = serverless(app);
+
+// Export io for WebSocket support
+module.exports.io = io; 
