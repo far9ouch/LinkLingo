@@ -102,4 +102,46 @@ socket.on('skipConfirmed', () => {
       Chat ended. Press ESC to start a new chat.
     </div>
   `;
+});
+
+// Add sound effects
+const messageSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+const connectSound = new Audio('https://assets.mixkit.co/active_storage/sfx/1529/1529-preview.mp3');
+
+messageSound.volume = 0.5;
+connectSound.volume = 0.3;
+
+// Add message handling
+socket.on('message', (message) => {
+  if (message.userId !== socket.id) {
+    messageSound.play().catch(() => {});
+  }
+  
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${message.userId === socket.id ? 'sent' : 'received'}`;
+  messageDiv.textContent = message.text;
+  chatMessages.appendChild(messageDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+
+socket.on('chatStarted', () => {
+  connectSound.play().catch(() => {});
+  // Rest of chatStarted handler...
+});
+
+// Add send button handler
+sendBtn.addEventListener('click', () => {
+  const text = chatInput.value.trim();
+  if (text) {
+    socket.emit('message', { text });
+    chatInput.value = '';
+  }
+});
+
+// Add enter key handler
+chatInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendBtn.click();
+  }
 }); 
