@@ -4,9 +4,26 @@ let skipTimer = null;
 
 const socket = io('/.netlify/functions/server', {
   path: '/socket.io',
-  transports: ['websocket'],
+  transports: ['websocket', 'polling'],
   autoConnect: true,
-  reconnection: true
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000
+});
+
+// Connection status handling
+socket.on('connect', () => {
+  console.log('Connected to server');
+  statusElement.innerHTML = `
+    <span class="status-dot" style="background: #00ff00"></span>
+    Connected
+  `;
+  socket.emit('join');
+});
+
+socket.on('onlineUsers', (count) => {
+  console.log('Online users:', count);
+  onlineCount.textContent = `${count} online`;
 });
 
 // Add connection error handling

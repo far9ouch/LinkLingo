@@ -5,43 +5,59 @@ const { Server } = require('socket.io');
 const app = express();
 const server = express.Router();
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  next();
-});
-
-// Store active users and rooms
+// Global variables to track users and rooms
+let onlineUsers = 0;
 const users = new Map();
 const rooms = new Map();
 
-// Socket.IO setup
+// Socket.IO setup with custom adapter
 const io = new Server({
   cors: {
-    origin: [
-      "https://linklingo.netlify.app",
-      "https://linklingo-b9661.netlify.app",
-      "http://localhost:3000"
-    ],
+    origin: "*",
     methods: ["GET", "POST"],
     credentials: true
+  },
+  adapter: {
+    rooms: new Map(),
+    sids: new Map(),
+    broadcast() {
+      // Custom broadcast implementation
+    }
   }
 });
 
 // Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
+  onlineUsers++;
+  io.emit('onlineUsers', onlineUsers);
 
-  // Handle user join
   socket.on('join', () => {
     users.set(socket.id, {
       id: socket.id,
       room: null
     });
     socket.emit('joined');
-    broadcastOnlineUsers();
+    io.emit('onlineUsers', onlineUsers);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+    onlineUsers = Math.max(0, onlineUsers - 1);
+    const user = users.get(socket.id);
+    if (user && user.room) {
+      const room = rooms.get(user.room);
+      if (room) {
+        room.users.forEach(userId => {
+          if (userId !== socket.id) {
+            io.to(userId).emit('partnerLeft');
+          }
+        });
+        rooms.delete(room.id);
+      }
+    }
+    users.delete(socket.id);
+    io.emit('onlineUsers', onlineUsers);
   });
 
   // Handle find chat partner
@@ -126,43 +142,33 @@ io.on('connection', (socket) => {
     }
     socket.emit('skipConfirmed');
   });
-
-  // Handle disconnect
-  socket.on('disconnect', () => {
-    const user = users.get(socket.id);
-    if (user && user.room) {
-      const room = rooms.get(user.room);
-      if (room) {
-        // Notify other user
-        room.users.forEach(userId => {
-          if (userId !== socket.id) {
-            io.to(userId).emit('partnerLeft');
-          }
-        });
-        rooms.delete(room.id);
-      }
-    }
-    users.delete(socket.id);
-    broadcastOnlineUsers();
-  });
-
-  function broadcastOnlineUsers() {
-    io.emit('onlineUsers', users.size);
-  }
 });
 
-// Add static file serving
-app.use(express.static('public'));
-
-// Test route
+// Test route that also returns online users
 server.get('/test', (req, res) => {
-  res.json({ message: 'Server is running' });
+  res.json({ 
+    message: 'Server is running',
+    onlineUsers: onlineUsers
+  });
 });
 
 app.use('/.netlify/functions/server', server);
 
 // Export the serverless function
-exports.handler = serverless(app);
+const handler = serverless(app);
+exports.handler = async (event, context) => {
+  // Handle WebSocket connections
+  if (event.requestContext && event.requestContext.eventType === 'CONNECT') {
+    return { statusCode: 200, body: 'Connected.' };
+  }
+  
+  if (event.requestContext && event.requestContext.eventType === 'DISCONNECT') {
+    return { statusCode: 200, body: 'Disconnected.' };
+  }
+
+  // Handle HTTP requests
+  return handler(event, context);
+};
 
 // Export io for WebSocket support
 module.exports.io = io; 

@@ -17,6 +17,7 @@
 [functions]
   external_node_modules = ["express", "socket.io"]
   node_bundler = "esbuild"
+  included_files = ["netlify/functions/**/*"]
 
 [dev]
   framework = "#custom"
@@ -24,6 +25,8 @@
   targetPort = 3000
 
 [[headers]]
-  for = "/*"
+  for = "/socket.io/*"
     [headers.values]
-    Access-Control-Allow-Origin = "*" 
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "*" 
