@@ -6,109 +6,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/5.0.0/normalize.min.css">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./chat.css">
-  
-  <script type="module">
-    import UserManager from './user-manager.js';
-    import ChatManager from './chat-manager.js';
-
-    const userManager = new UserManager();
-    let chatManager;
-
-    async function init() {
-      // Try to connect
-      const connected = await userManager.connect();
-      
-      if (!connected) {
-        document.querySelector('.status').innerHTML = `
-          <span class="status-dot" style="background: red"></span>
-          Connection failed. Please refresh.
-        `;
-        return;
-      }
-
-      // Show welcome message
-      document.querySelector('.status').innerHTML = `
-        <span class="status-dot" style="background: #00ff00"></span>
-        You are now online. Enjoy!
-      `;
-
-      // Initialize chat
-      chatManager = new ChatManager(userManager.currentUserId, userManager.username);
-      
-      // Override connect callback
-      chatManager.onConnect = () => {
-        document.querySelector('.status').innerHTML = `
-          <span class="status-dot" style="background: #00ff00"></span>
-          Connected with stranger
-        `;
-        document.querySelector('input').disabled = false;
-        document.querySelector('.send-btn').disabled = false;
-      };
-
-      // Listen for online users
-      userManager.listenToOnlineUsers((count) => {
-        document.querySelector('.online-count').textContent = count + ' online';
-      });
-
-      // Listen for messages
-      chatManager.listenToMessages((messages) => {
-        updateChatMessages(messages);
-      });
-
-      // Start finding chat
-      chatManager.findNewChat();
-    }
-
-    // Initialize everything
-    init();
-
-    // UI Event Listeners
-    document.querySelector('.send-btn').addEventListener('click', async () => {
-      const input = document.querySelector('input');
-      const message = input.value.trim();
-      
-      if (!message) {
-        try {
-          await chatManager.skip();
-          resetChatUI();
-        } catch (error) {
-          alert(error.message);
-        }
-        return;
-      }
-
-      await chatManager.sendMessage(message);
-      input.value = '';
-    });
-
-    function updateChatMessages(messages) {
-      const chatMessages = document.querySelector('.chat-messages');
-      chatMessages.innerHTML = '';
-      
-      Object.values(messages).forEach(msg => {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${msg.sender === userManager.currentUserId ? 'sent' : 'received'}`;
-        messageDiv.textContent = msg.text;
-        chatMessages.appendChild(messageDiv);
-      });
-      
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    function resetChatUI() {
-      document.querySelector('.status').innerHTML = `
-        <span class="status-dot"></span>
-        Looking for stranger...
-      `;
-      document.querySelector('input').disabled = true;
-      document.querySelector('.send-btn').disabled = true;
-      document.querySelector('.chat-messages').innerHTML = `
-        <div class="system-message">
-          Waiting to connect you with someone...
-        </div>
-      `;
-    }
-  </script>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body class="chat-page">
   <div class="chat-container">
@@ -136,5 +34,7 @@
       <div class="user-info"></div>
     </div>
   </div>
+
+  <script src="./chat.js"></script>
 </body>
 </html> 
