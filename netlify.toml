@@ -1,8 +1,23 @@
 [build]
-  publish = "."
-  command = "# no build command"
+  publish = "public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/socket.io/*"
+  to = "/.netlify/functions/server"
+  status = 200
 
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200 
+  status = 200
+
+[dev]
+  framework = "#custom"
+  command = "npm run dev"
+  targetPort = 3000
+
+[[headers]]
+  for = "/*"
+    [headers.values]
+    Access-Control-Allow-Origin = "*" 
