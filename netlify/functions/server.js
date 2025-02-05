@@ -6,45 +6,66 @@ const app = express();
 const server = express.Router();
 
 // Global variables to track users and rooms
-let onlineUsers = 0;
 const users = new Map();
 const rooms = new Map();
 
-// Socket.IO setup with custom adapter
+// Socket.IO setup
 const io = new Server({
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
     credentials: true
-  },
-  adapter: {
-    rooms: new Map(),
-    sids: new Map(),
-    broadcast() {
-      // Custom broadcast implementation
-    }
   }
 });
 
 // Socket.IO event handlers
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
-  onlineUsers++;
-  io.emit('onlineUsers', onlineUsers);
-
+  
   socket.on('join', () => {
     users.set(socket.id, {
       id: socket.id,
       room: null
     });
     socket.emit('joined');
-    io.emit('onlineUsers', onlineUsers);
+    
+    // Broadcast updated count to all clients
+    io.emit('onlineUsers', users.size);
+  });
+
+  socket.on('findPartner', () => {
+    const user = users.get(socket.id);
+    if (!user) return;
+
+    const availablePartner = Array.from(users.values()).find(u => 
+      u.id !== socket.id && !u.room
+    );
+
+    if (availablePartner) {
+      const roomId = Math.random().toString(36).substring(2);
+      const room = {
+        id: roomId,
+        users: [user.id, availablePartner.id],
+        messages: []
+      };
+      rooms.set(roomId, room);
+
+      users.get(socket.id).room = roomId;
+      users.get(availablePartner.id).room = roomId;
+
+      socket.join(roomId);
+      io.sockets.sockets.get(availablePartner.id).join(roomId);
+
+      io.to(roomId).emit('chatStarted', { roomId });
+    } else {
+      socket.emit('waiting');
+    }
   });
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    onlineUsers = Math.max(0, onlineUsers - 1);
     const user = users.get(socket.id);
+    
     if (user && user.room) {
       const room = rooms.get(user.room);
       if (room) {
@@ -56,46 +77,10 @@ io.on('connection', (socket) => {
         rooms.delete(room.id);
       }
     }
+    
     users.delete(socket.id);
-    io.emit('onlineUsers', onlineUsers);
-  });
-
-  // Handle find chat partner
-  socket.on('findPartner', () => {
-    const user = users.get(socket.id);
-    if (!user) return;
-
-    // Find available partner
-    const availablePartner = Array.from(users.values()).find(u => 
-      u.id !== socket.id && !u.room
-    );
-
-    if (availablePartner) {
-      // Create new room
-      const roomId = Math.random().toString(36).substring(2);
-      const room = {
-        id: roomId,
-        users: [user.id, availablePartner.id],
-        messages: []
-      };
-      rooms.set(roomId, room);
-
-      // Update users' room status
-      users.get(socket.id).room = roomId;
-      users.get(availablePartner.id).room = roomId;
-
-      // Join both users to room
-      socket.join(roomId);
-      io.sockets.sockets.get(availablePartner.id).join(roomId);
-
-      // Notify both users
-      io.to(roomId).emit('chatStarted', {
-        roomId,
-        users: [user.id, availablePartner.id]
-      });
-    } else {
-      socket.emit('waiting');
-    }
+    // Broadcast updated count after user disconnects
+    io.emit('onlineUsers', users.size);
   });
 
   // Handle messages
@@ -148,7 +133,7 @@ io.on('connection', (socket) => {
 server.get('/test', (req, res) => {
   res.json({ 
     message: 'Server is running',
-    onlineUsers: onlineUsers
+    onlineUsers: users.size
   });
 });
 
@@ -157,18 +142,19 @@ app.use('/.netlify/functions/server', server);
 // Export the serverless function
 const handler = serverless(app);
 exports.handler = async (event, context) => {
-  // Handle WebSocket connections
-  if (event.requestContext && event.requestContext.eventType === 'CONNECT') {
-    return { statusCode: 200, body: 'Connected.' };
-  }
-  
-  if (event.requestContext && event.requestContext.eventType === 'DISCONNECT') {
-    return { statusCode: 200, body: 'Disconnected.' };
+  if (event.requestContext) {
+    const { eventType = '' } = event.requestContext;
+    
+    if (eventType === 'CONNECT') {
+      return { statusCode: 200, body: 'Connected.' };
+    }
+    
+    if (eventType === 'DISCONNECT') {
+      return { statusCode: 200, body: 'Disconnected.' };
+    }
   }
 
-  // Handle HTTP requests
   return handler(event, context);
 };
 
-// Export io for WebSocket support
 module.exports.io = io; 

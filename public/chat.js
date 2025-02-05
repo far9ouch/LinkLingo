@@ -13,17 +13,18 @@ const socket = io('/.netlify/functions/server', {
 
 // Connection status handling
 socket.on('connect', () => {
-  console.log('Connected to server');
-  statusElement.innerHTML = `
-    <span class="status-dot" style="background: #00ff00"></span>
-    Connected
-  `;
+  console.log('Connected to server with ID:', socket.id);
   socket.emit('join');
 });
 
 socket.on('onlineUsers', (count) => {
-  console.log('Online users:', count);
+  console.log('Online users updated:', count);
   onlineCount.textContent = `${count} online`;
+});
+
+socket.on('joined', () => {
+  console.log('Joined successfully');
+  socket.emit('findPartner');
 });
 
 // Add connection error handling
